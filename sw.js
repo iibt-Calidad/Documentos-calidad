@@ -1,5 +1,5 @@
 // Si cambias index.html, sube el número de versión para que los celulares se actualicen
-const CACHE = "congeladores-v1";
+const CACHE = "congeladores-v2";
 const ARCHIVOS = [
   "./",
   "./index.html",
