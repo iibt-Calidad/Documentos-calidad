@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f6feb">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Registro de temperaturas</title>
+<style>
+  :root {
+    --bg: #f4f7fa; --card: #ffffff; --text: #1b2a38; --muted: #5d6f80;
+    --accent: #1f6feb; --border: #d5dde5; --ok: #1a7f37; --bad: #c62828;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10161d; --card: #19222c; --text: #e6edf3; --muted: #93a3b3;
+      --accent: #4c8dff; --border: #2c3a48; --ok: #3fb950; --bad: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 520px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  h1 { font-size: 1.3rem; margin: 0; }
+  #estado { font-size: .75rem; padding: 3px 8px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input, select, textarea {
+    width: 100%; padding: 10px; font-size: 1rem; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  button {
+    width: 100%; margin-top: 12px; padding: 12px; font-size: 1rem; font-weight: 600;
+    border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer;
+  }
+  button.sec { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button.mini { width: auto; margin: 0; padding: 4px 8px; font-size: .8rem; background: transparent; color: var(--bad); border: 1px solid var(--border); }
+  #msg { margin-top: 12px; font-size: .9rem; min-height: 1.2em; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  .resumen { font-size: .9rem; color: var(--muted); margin: 0 0 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+  .fuera { color: var(--bad); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  details summary { cursor: pointer; font-size: .9rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Temperaturas</h1>
+    <span id="estado">…</span>
+  </header>
+
+  <section class="card">
+    <label for="congelador">Congelador</label>
+    <select id="congelador"></select>
+
+    <label for="temperatura">Temperatura (°C)</label>
+    <input id="temperatura" type="number" step="0.1" inputmode="decimal" placeholder="-20.5">
+
+    <label for="fechaHora">Fecha y hora</label>
+    <input id="fechaHora" type="datetime-local">
+
+    <label for="responsable">Responsable</label>
+    <input id="responsable" type="text" placeholder="Nombre">
+
+    <label for="observaciones">Observaciones (opcional)</label>
+    <textarea id="observaciones" rows="2"></textarea>
+
+    <button id="guardar">Guardar registro</button>
+    <div id="msg" role="status"></div>
+  </section>
+
+  <section class="card">
+    <strong>Exportar</strong>
+    <p class="resumen" id="resumen"></p>
+    <button id="btnPendientes">Descargar CSV (solo pendientes)</button>
+    <button id="btnTodos" class="sec">Descargar CSV (todos)</button>
+    <button id="btnCompartir" class="sec">Compartir archivo (WhatsApp, Drive…)</button>
+    <button id="btnSheets" class="sec" hidden>Enviar pendientes a Google Sheets</button>
+    <div id="msgExport" class="resumen" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card">
+    <strong>Últimos registros</strong>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Fecha</th><th>Hora</th><th>Congelador</th><th>°C</th><th></th></tr></thead>
+        <tbody id="historial"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Mantenimiento</summary>
+      <button id="btnLimpiar" class="sec" style="color:var(--bad);border-color:var(--bad)">Borrar registros ya exportados</button>
+    </details>
+  </section>
+</main>
+
+<script>
+// ====== CONFIGURACIÓN: edita solo esta parte ======
+const CONFIG = {
+  CONGELADORES: ["Congelador 1", "Congelador 2", "Congelador 3", "Congelador 4"],
+  TEMP_MIN: -25,           // rango aceptable (°C)
+  TEMP_MAX: -15,
+  CSV_SEPARADOR: ";",      // ";" para Excel en español; "," para Excel en inglés
+  CSV_DECIMAL: ",",        // "," para configuración regional en español; "." en inglés
+  URL_SCRIPT: ""           // opcional: URL de Apps Script (/exec) para enviar a Google Sheets
+};
+// ===================================================
+
+const $ = (id) => document.getElementById(id);
+const CLAVE = "registros_congeladores_v1";
+
+// ---------- Almacenamiento local ----------
+function leer() {
+  try { return JSON.parse(localStorage.getItem(CLAVE) || "[]"); }
+  catch (e) { return []; }
+}
+function escribir(lista) { localStorage.setItem(CLAVE, JSON.stringify(lista)); }
+
+function ahoraLocalISO() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
+function mostrar(id, texto, clase) {
+  const el = $(id);
+  el.textContent = texto;
+  el.className = (el.className.split(" ").filter((c) => c === "resumen")[0] || "") + " " + (clase || "");
+}
+
+// ---------- Guardar ----------
+function guardar() {
+  const temp = parseFloat($("temperatura").value);
+  const fh = $("fechaHora").value;
+  const responsable = $("responsable").value.trim();
+
+  if (isNaN(temp)) return mostrar("msg", "Ingresa una temperatura válida.", "bad");
+  if (!fh) return mostrar("msg", "Indica fecha y hora.", "bad");
+  if (!responsable) return mostrar("msg", "Indica el responsable.", "bad");
+
+  localStorage.setItem("responsable", responsable);
+  const [fecha, hora] = fh.split("T");
+  const fuera = temp < CONFIG.TEMP_MIN || temp > CONFIG.TEMP_MAX;
+
+  const lista = leer();
+  lista.push({
+    id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+    fecha, hora,
+    congelador: $("congelador").value,
+    temperatura: temp,
+    responsable,
+    observaciones: $("observaciones").value.trim(),
+    alerta: fuera ? "FUERA DE RANGO" : "OK",
+    creado: new Date().toISOString(),
+    exportado: false
+  });
+  escribir(lista);
+
+  mostrar("msg", fuera ? "Guardado. ⚠ Temperatura fuera de rango." : "Registro guardado.", fuera ? "bad" : "ok");
+  $("temperatura").value = "";
+  $("observaciones").value = "";
+  $("fechaHora").value = ahoraLocalISO();
+  pintar();
+}
+
+// ---------- Pantalla ----------
+function pintar() {
+  const lista = leer();
+  const pendientes = lista.filter((r) => !r.exportado).length;
+  $("resumen").textContent = `${lista.length} registros guardados · ${pendientes} pendientes de exportar`;
+
+  const tbody = $("historial");
+  tbody.innerHTML = "";
+  lista.slice(-15).reverse().forEach((r) => {
+    const tr = document.createElement("tr");
+    const fuera = r.temperatura < CONFIG.TEMP_MIN || r.temperatura > CONFIG.TEMP_MAX;
+    [r.fecha, r.hora, r.congelador, r.temperatura].forEach((v, i) => {
+      const td = document.createElement("td");
+      td.textContent = v;
+      if (i === 3 && fuera) td.className = "fuera";
+      tr.appendChild(td);
+    });
+    const td = document.createElement("td");
+    const b = document.createElement("button");
+    b.className = "mini"; b.textContent = "✕"; b.title = "Eliminar";
+    b.onclick = () => eliminar(r.id);
+    td.appendChild(b); tr.appendChild(td);
+    tbody.appendChild(tr);
+  });
+  if (!lista.length) tbody.innerHTML = '<tr><td colspan="5">Sin registros todavía.</td></tr>';
+}
+
+function eliminar(id) {
+  if (!confirm("¿Eliminar este registro?")) return;
+  escribir(leer().filter((r) => r.id !== id));
+  pintar();
+}
+
+// ---------- Exportar CSV ----------
+function celda(v) {
+  const s = String(v ?? "");
+  return /[";,\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function construirCSV(registros) {
+  const sep = CONFIG.CSV_SEPARADOR;
+  const enc = ["Fecha", "Hora", "Congelador", "Temperatura (°C)", "Responsable", "Observaciones", "Alerta", "Marca de tiempo"];
+  const filas = registros.map((r) => [
+    r.fecha, r.hora, r.congelador,
+    String(r.temperatura).replace(".", CONFIG.CSV_DECIMAL),
+    r.responsable, r.observaciones, r.alerta, r.creado
+  ].map(celda).join(sep));
+  // BOM para que Excel respete tildes y la °
+  return "\ufeff" + [enc.map(celda).join(sep), ...filas].join("\r\n");
+}
+
+function nombreArchivo() {
+  return "temperaturas_" + ahoraLocalISO().replace(/[:T]/g, "-") + ".csv";
+}
+
+function marcarExportados(ids) {
+  const set = new Set(ids);
+  escribir(leer().map((r) => set.has(r.id) ? { ...r, exportado: true } : r));
+  pintar();
+}
+
+function exportar(soloPendientes) {
+  const regs = leer().filter((r) => !soloPendientes || !r.exportado);
+  if (!regs.length) return mostrar("msgExport", "No hay registros para exportar.", "bad");
+  const blob = new Blob([construirCSV(regs)], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = nombreArchivo();
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  marcarExportados(regs.map((r) => r.id));
+  mostrar("msgExport", `Archivo generado con ${regs.length} registros.`, "ok");
+}
+
+async function compartir() {
+  const regs = leer().filter((r) => !r.exportado);
+  if (!regs.length) return mostrar("msgExport", "No hay registros pendientes.", "bad");
+  const archivo = new File([construirCSV(regs)], nombreArchivo(), { type: "text/csv" });
+  if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+    try {
+      await navigator.share({ files: [archivo], title: "Registro de temperaturas" });
+      marcarExportados(regs.map((r) => r.id));
+      mostrar("msgExport", "Archivo compartido.", "ok");
+    } catch (e) { /* el usuario canceló */ }
+  } else {
+    mostrar("msgExport", "Este dispositivo no permite compartir archivos. Usa la descarga.", "bad");
+  }
+}
+
+// ---------- Envío opcional a Google Sheets (requiere internet) ----------
+async function enviarSheets() {
+  if (!CONFIG.URL_SCRIPT) return;
+  if (!navigator.onLine) return mostrar("msgExport", "Sin internet. Inténtalo más tarde.", "bad");
+  const pend = leer().filter((r) => !r.exportado);
+  if (!pend.length) return mostrar("msgExport", "No hay registros pendientes.", "bad");
+  const enviados = [];
+  for (const r of pend) {
+    try {
+      await fetch(CONFIG.URL_SCRIPT, {
+        method: "POST", mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(r)
+      });
+      enviados.push(r.id);
+    } catch (e) { break; }
+  }
+  marcarExportados(enviados);
+  mostrar("msgExport", `${enviados.length} de ${pend.length} enviados.`, enviados.length === pend.length ? "ok" : "bad");
+}
+
+function limpiarExportados() {
+  const n = leer().filter((r) => r.exportado).length;
+  if (!n) return mostrar("msgExport", "No hay registros exportados para borrar.", "bad");
+  if (!confirm(`Se borrarán ${n} registros ya exportados. ¿Seguro?`)) return;
+  escribir(leer().filter((r) => !r.exportado));
+  pintar();
+}
+
+// ---------- Inicio ----------
+function actualizarEstado() {
+  $("estado").textContent = navigator.onLine ? "En línea" : "Sin conexión";
+}
+
+function iniciar() {
+  $("congelador").innerHTML = CONFIG.CONGELADORES.map((c) => `<option>${c}</option>`).join("");
+  $("fechaHora").value = ahoraLocalISO();
+  $("responsable").value = localStorage.getItem("responsable") || "";
+  $("guardar").onclick = guardar;
+  $("btnPendientes").onclick = () => exportar(true);
+  $("btnTodos").onclick = () => exportar(false);
+  $("btnCompartir").onclick = compartir;
+  $("btnSheets").onclick = enviarSheets;
+  $("btnSheets").hidden = !CONFIG.URL_SCRIPT;
+  $("btnLimpiar").onclick = limpiarExportados;
+  window.addEventListener("online", actualizarEstado);
+  window.addEventListener("offline", actualizarEstado);
+  actualizarEstado();
+  pintar();
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+}
+
+iniciar();
+</script>
+</body>
+</html>
