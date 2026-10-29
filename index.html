@@ -246,7 +246,6 @@ function exportar(soloPendientes) {
   a.download = nombreArchivo();
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  marcarExportados(regs.map((r) => r.id));
   mostrar("msgExport", `Archivo generado con ${regs.length} registros.`, "ok");
 }
 
@@ -257,7 +256,6 @@ async function compartir() {
   if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
     try {
       await navigator.share({ files: [archivo], title: "Registro de temperaturas" });
-      marcarExportados(regs.map((r) => r.id));
       mostrar("msgExport", "Archivo compartido.", "ok");
     } catch (e) { /* el usuario canceló */ }
   } else {
